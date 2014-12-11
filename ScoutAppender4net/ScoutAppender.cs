@@ -1,6 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Collections.Specialized;
+using System.Net;
 
 namespace ScoutAppender4net
 {
@@ -9,7 +9,18 @@ namespace ScoutAppender4net
         /// <summary>
         /// The URL of your FogBugz installation, e.g. "https://example.fogbugz.com"
         /// </summary>
-        public string FogBugzUrl { get; set; }
+        public string FogBugzUrl
+        {
+            get { return fbUrl; }
+            set
+            {
+                var baseUri = new Uri(value, UriKind.Absolute);
+                scoutUri = new Uri(baseUri, "scoutSubmit.asp");
+                fbUrl = value;
+            }
+        }
+        private string fbUrl;
+        protected Uri scoutUri;
 
         /// <summary>
         /// The full name of the FogBugz user the case creation or edit should be made as.
@@ -45,7 +56,37 @@ namespace ScoutAppender4net
 
         protected override void Append(log4net.Core.LoggingEvent loggingEvent)
         {
-            throw new NotImplementedException("Scout appender is not implemented");
+            AssertParameters();
+
+            var extra = RenderLoggingEvent(loggingEvent);
+            var description = extra.Split(new[] { Environment.NewLine }, 1, StringSplitOptions.RemoveEmptyEntries)[0];
+
+            ScoutSubmit(description, extra);
+        }
+
+        void ScoutSubmit(string description, string extra)
+        {
+            var values = new NameValueCollection
+            {
+                {"ScoutUserName", Username},
+                {"ScoutProject", Project},
+                {"ScoutArea", Area},
+                {"Description", description},
+            };
+            if (!string.IsNullOrEmpty(extra)) { values.Add("Extra", extra); }
+            if (!string.IsNullOrEmpty(Email)) { values.Add("Email", Email); }
+            if (ForceNewBug) { values.Add("ForceNewBug", "1"); }
+
+            // Fire and forget. Should probably not forget.
+            new WebClient().UploadValues(scoutUri, "POST", values);
+        }
+
+        protected void AssertParameters()
+        {
+            if (scoutUri == null) { throw new InvalidOperationException("FogBugzUrl must be set correctly"); }
+            if (string.IsNullOrEmpty(Username)) { throw new InvalidOperationException("Username must be set"); }
+            if (string.IsNullOrEmpty(Project)) { throw new InvalidOperationException("Project must be set"); }
+            if (string.IsNullOrEmpty(Area)) { throw new InvalidOperationException("Area must be set"); }
         }
     }
 }
